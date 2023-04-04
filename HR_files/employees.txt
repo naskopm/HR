@@ -1,0 +1,6 @@
+1, Stoqn, Kolev, 2000, developer, 2000, 2000, SQL, SQL, React, , English, Chinese
+3, Atanas, Margaritov, 2004, Junior, 2000, Dutch, Portugese
+4, Harry, Potter, 1963, logistics, 2500, Portugese, Afrikaans
+5, Slavqn, Petkov, 2000, developer, 4000, 600, C#, React, JQuerry, , Russian, Gipsy, Portugese
+6, Filip, Stoqnov, 2000, developer, 2500, 300, JavaScript, React, , French, Gugrati
+7, Kolyo, Gilana, 2002, Junior, 3500, Dutch, Gugrati

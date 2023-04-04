@@ -1,0 +1,10 @@
+Java
+C#
+JavaScript
+C++
+SQL
+Delphi
+React
+Python
+TypeScript
+JQuerry
