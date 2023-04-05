@@ -15,7 +15,7 @@ namespace HR
         private static double SalaryDecreaseLimit = 0.2;
         private static List<string> titles = new List<string>();
         private static List<string> all_languages = new List<string>();
-        public const string DIR_TO_SAVE = "D:\\Наско\\HR_files";
+        public const string DIR_TO_SAVE = "D:\\Наско\\HR";
         public const string FILE_TO_SAVE = "employees.txt";
         private static int maxID = 1;
         public static TextBox textBoxID;
@@ -23,8 +23,11 @@ namespace HR
         public static TextBox textBoxLastName;
         public static ComboBox comboTitle;
         public static TextBox textBoxYOB;
+        public static TextBox textBoxFilter;
         public static TextBox textBoxSalary;
         public static CheckedListBox checkedListBox;
+        public static DataGridView dataGridView;
+        public static DataGridView dataGridView1;
         public static void Init()
         {
             string fileData = Employee.DIR_TO_SAVE + "\\titles.txt";
@@ -204,6 +207,83 @@ namespace HR
         public string GetLastName()
         {
             return lastName;
+        }
+        public void fillSecondTable()
+        {
+            Employee.clearLanguages();
+            Developer.clearSkills();
+            int dataGridID = 0;
+            bool isNotInTable = true;
+    
+
+            this.displayEmployees();
+            for (int i = 0; i < dataGridView.Rows.Count - 1; i++)
+            {
+                dataGridID = int.Parse(dataGridView.Rows[i].Cells[0].Value.ToString());
+                if (dataGridID == this.GetID())
+                {
+                    dataGridView.Rows[i].Selected = true;
+                    Employee toDisplay = FindEmployee(dataGridID);
+                    toDisplay.displayEmployees();
+                    isNotInTable = false;
+                    break;
+                }
+            }
+            if (isNotInTable)
+            {
+                dataGridView.Rows.Clear();
+                foreach (Employee employee in Employee.GetAllEmployees())
+                {
+                    dataGridView.Rows.Add(employee.GetID(), employee.GetFirstName(), employee.GetLastName(), employee.GetTitle());
+                }
+                for (int i = 0; i < dataGridView.Rows.Count - 1; i++)
+                {
+                    dataGridID = int.Parse(dataGridView.Rows[i].Cells[0].Value.ToString());
+                    if (dataGridID == this.GetID())
+                    {
+                        textBoxFilter.Text = "";
+
+                        dataGridView.Rows[i].Selected = true;
+                        Employee toDisplay = FindEmployee(dataGridID);
+                        toDisplay.displayEmployees();
+                        isNotInTable = false;
+                        break;
+                    }
+                }
+            }
+            foreach (Employee employee in Employee.GetAllEmployees())
+            {
+                if (employee.GetID() == this.GetID())
+                {
+                    try
+                    {
+                        Manager man = (Manager)employee;
+                        if (employee != null)
+                        {
+                            employee.displayEmployees();
+                            if (Manager.ManagerTitles.IndexOf(this.GetTitle()) != -1)
+                            {
+                                dataGridView1.Enabled = true;
+                                dataGridView1.Rows.Clear();
+                                foreach (var item in man.GetTeam())
+                                {
+                                    Employee emp1 = FindEmployee(item);
+                                    dataGridView1.Rows.Add(emp1.GetID(), emp1.GetFirstName(), emp1.GetLastName(), emp1.GetTitle());
+                                }
+                            }
+                            else
+                            {
+                                dataGridView1.Enabled = false;
+                            }
+                        }
+
+                    }
+                    catch (Exception)
+                    {
+
+                    }
+                }
+            }
         }
 
         public string GetFullName()

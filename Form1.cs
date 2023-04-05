@@ -64,6 +64,9 @@ namespace HR
             Manager.comboManager = comboManagers;
             Manager.Bonus = textBoxBonus;
             Manager.ShowTeam = dataGridView1;
+            Employee.dataGridView1 = dataGridView1;
+            Employee.dataGridView = dataGridView;
+            Employee.textBoxFilter = textBoxFilter;
             Manager.TeamBudget = teamBudget;
             string fileData = Employee.DIR_TO_SAVE + "\\employees.txt";
             string[] lines = File.ReadAllLines(fileData);
@@ -84,7 +87,7 @@ namespace HR
         private void dataGridView_RowEnter(object sender, DataGridViewCellEventArgs e)
         {
             teamBudget.Text = null;
-            if (dataGridView.Rows.Count == 1)
+            if (dataGridView.Rows[e.RowIndex].Cells[0].Value == null)
             {
                 return;
             }
@@ -149,6 +152,9 @@ namespace HR
 
         private void btnSave_Click(object sender, EventArgs e)
         {
+            textBoxFirstName.Enabled = false;
+            textBoxLastName.Enabled = false;
+            textBoxYOB.Enabled = false;
             Boolean bIsNew = false;
             if (emp == null)
             {
@@ -168,6 +174,11 @@ namespace HR
                     filtered.Add(emp);
                 else
                     MessageBox.Show("The new employee " + emp.GetFullName() + " is not displayed in the grid because of the filer.");
+                emp.SetSalary(double.Parse(textBoxSalary.Text));
+                emp.SetTitle(comboBoxTitle.Text);
+                emp.ClearLanguages();
+                emp.setLanguages();
+                Manager.TakeEmpToTeam(emp);
                 dataGridView.Rows.Add(emp.GetID(), emp.GetFirstName(), emp.GetLastName(), emp.GetTitle());
                 dataGridView1.Rows.Clear();
                 dataGridView.Rows[dataGridView.Rows.Count - 2].Selected = true;
@@ -204,11 +215,13 @@ namespace HR
                 Manager man = (Manager)emp;
                 man.SetBonus(int.Parse(textBoxBonus.Text));
             }
+            string saveSelectedManager = comboManagers.Text;
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
             Employee.SaveToFile();
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
+            comboManagers.Text = saveSelectedManager;
         }
 
 
@@ -275,98 +288,20 @@ namespace HR
                 textBoxBonus.Text = "";
         }
 
-        private void dataGridView1_RowEnter(object sender, DataGridViewCellEventArgs e)
+        private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
         {
             if (dataGridView1.Rows.Count == 0)
             {
                 return;
             }
-            
-        }
-
-        private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
-        {
             Employee.clearLanguages();
             Developer.clearSkills();
-            int dataGridID = 0;
-            bool isNotInTable = true;
             int empID = int.Parse(dataGridView1.Rows[e.RowIndex].Cells[0].Value.ToString());
             Employee emp = FindEmployee(empID);
-            emp.displayEmployees();
-            for (int i = 0; i < dataGridView.Rows.Count - 1; i++)
-            {
-                dataGridID =  int.Parse(dataGridView.Rows[i].Cells[0].Value.ToString());
-                if (dataGridID == empID)
-                {
-                    dataGridView.Rows[i].Selected = true;
-                    Employee toDisplay = FindEmployee(dataGridID);
-                    toDisplay.displayEmployees();
-                    isNotInTable = false;
-                    break;
-                }
-            }
-            if(isNotInTable)
-            {
-                dataGridView.Rows.Clear();
-                foreach (Employee employee in Employee.GetAllEmployees())
-                {
-                    dataGridView.Rows.Add(employee.GetID(), employee.GetFirstName(), employee.GetLastName(), employee.GetTitle());
-                }
-                for (int i = 0; i < dataGridView.Rows.Count - 1; i++)
-                {
-                    dataGridID = int.Parse(dataGridView.Rows[i].Cells[0].Value.ToString());
-                    if (dataGridID == empID)
-                    {
-                        textBoxFilter.Text = "";
-   
-                        dataGridView.Rows[i].Selected = true;
-                        Employee toDisplay = FindEmployee(dataGridID);
-                        toDisplay.displayEmployees();
-                        isNotInTable = false;
-                        break;
-                    }
-                }
-            }
-            foreach (Employee employee in Employee.GetAllEmployees())
-            {
-                if(employee.GetID() == empID)
-                {
-                    try
-                    {
-                        Manager man = (Manager)employee;
-                        if (employee != null)
-                        {
-                            employee.displayEmployees();
-                            if (Manager.ManagerTitles.IndexOf(emp.GetTitle()) != -1)
-                            {
-                                dataGridView1.Enabled = true;
-                                dataGridView1.Rows.Clear();
-                                foreach (var item in man.GetTeam())
-                                {
-                                    Employee emp1 = FindEmployee(item);
-                                    dataGridView1.Rows.Add(emp1.GetID(), emp1.GetFirstName(), emp1.GetLastName(), emp1.GetTitle());
-                                }
-                            }
-                            else
-                            {
-                                dataGridView1.Enabled = false;
-                            }
-                        }
-
-                    }
-                    catch (Exception)
-                    {
-
-                    }
-                }
-            }
-        }
-
-        private void label12_Click(object sender, EventArgs e)
-        {
-            
-            Manager manConverted = (Manager)emp;
-            
+            emp.fillSecondTable();
+            int managerID = Manager.findManager(emp.GetID());
+            Employee manager = FindEmployee(managerID);
+            comboManagers.Text = manager.ToString();
         }
     }
 }

@@ -408,7 +408,6 @@
             this.dataGridView1.Size = new System.Drawing.Size(423, 219);
             this.dataGridView1.TabIndex = 30;
             this.dataGridView1.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridView1_CellContentClick);
-            this.dataGridView1.RowEnter += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridView1_RowEnter);
             // 
             // dataGridViewTextBoxColumn1
             // 
@@ -452,7 +451,6 @@
             this.teamBudget.Size = new System.Drawing.Size(41, 13);
             this.teamBudget.TabIndex = 32;
             this.teamBudget.Text = "label12";
-            this.teamBudget.Click += new System.EventHandler(this.label12_Click);
             // 
             // Form1
             // 

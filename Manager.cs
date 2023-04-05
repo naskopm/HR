@@ -152,13 +152,14 @@ namespace HR
 		public double GetBonus()
 		{
 			return bonus;
-		}
+        }
 
-		public override double getYearlySalary()
-		{
-			return base.getYearlySalary() + bonus + this.getYearlyBudget();
-		}
-		public double getYearlyBudget()
+        public override double getYearlySalary()
+        {
+            return base.getYearlySalary() + bonus + this.getYearlyBudget();
+        }
+	
+        public double getYearlyBudget()
         {
 			double budget = 0;
             foreach (var item in team)
@@ -194,7 +195,7 @@ namespace HR
 					comboManager.Text = selectedManager.ToString();
 				}
 			}
-	        TeamBudget.Text = this.getYearlyBudget().ToString();
+	        TeamBudget.Text = (this.getYearlyBudget() + this.getYearlySalary()).ToString();
         }
 		public static int findManager(int id)
         {
