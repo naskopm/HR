@@ -80,14 +80,17 @@ namespace HR
                 dataGridView.Rows.Add(emp.GetID().ToString(), emp.GetFirstName(), emp.GetLastName(), emp.GetTitle());
 
             }
-            comboManagers.Items.Clear();
-            comboManagers.Items.AddRange(Manager.takeManagersToCombo());
+/*            comboManagers.Items.Clear();
+            comboManagers.Items.AddRange(Manager.takeManagersToCombo())*/;
         }
-
+    
         private void dataGridView_RowEnter(object sender, DataGridViewCellEventArgs e)
         {
+            comboManagers.Items.Clear();
+            dataGridView1.Rows.Clear();
             teamBudget.Text = null;
-            if (dataGridView.Rows[e.RowIndex].Cells[0].Value == null)
+           
+                if (dataGridView.Rows[e.RowIndex].Cells[0].Value == null)
             {
                 return;
             }
@@ -99,6 +102,7 @@ namespace HR
             Developer.clearSkills();
             comboManagers.SelectedIndex = -1;
             dataGridView1.Rows.Clear();
+          
             if (emp != null)
             {
                 emp.displayEmployees();
@@ -111,6 +115,15 @@ namespace HR
                 
                 if (Manager.ManagerTitles.IndexOf(emp.GetTitle()) != -1)
                 {
+                    foreach (Manager managerCheck in Manager.takeManagersToCombo())
+                    {
+                        if (emp.GetID() != managerCheck.GetID())
+                        {
+                            comboManagers.Items.Add(managerCheck);
+                        }
+                    }
+                        
+                    
                     dataGridView1.Enabled = true;
                     dataGridView1.Rows.Clear();
                     Manager man = (Manager)emp;
@@ -123,11 +136,12 @@ namespace HR
                 }
                 else
                 {
+                    comboManagers.Items.AddRange(Manager.takeManagersToCombo());
                     dataGridView1.Enabled = false;
                 }
             }
-                
-                
+ 
+
             textBoxFirstName.Enabled = false;
             textBoxLastName.Enabled = false;
             textBoxYOB.Enabled = false;
@@ -159,11 +173,11 @@ namespace HR
             if (emp == null)
             {
                 if (comboBoxTitle.SelectedItem.ToString() == "developer")
-                    emp = new Developer(0, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), double.Parse(textBoxBonus.Text));
+                    emp = new Developer(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), double.Parse(textBoxBonus.Text));
                 if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1)
-                    emp = new Manager(0, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), comboBoxTitle.Text, double.Parse(textBoxBonus.Text));
+                    emp = new Manager(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), comboBoxTitle.Text, double.Parse(textBoxBonus.Text));
                 if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) == -1 && comboBoxTitle.SelectedItem.ToString() != "developer")
-                    emp = new Employee(0, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text));
+                    emp = new Employee(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text));
                 bIsNew = true;
             }
             if (bIsNew)
@@ -222,6 +236,14 @@ namespace HR
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
             comboManagers.Text = saveSelectedManager;
+            comboManagers.Items.Clear();
+            foreach (Manager managerCheck in Manager.takeManagersToCombo())
+            {
+                if (emp.GetID() != managerCheck.GetID())
+                {
+                    comboManagers.Items.Add(managerCheck);
+                }
+            }
         }
 
 
@@ -290,6 +312,8 @@ namespace HR
 
         private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
         {
+
+
             if (dataGridView1.Rows.Count == 0)
             {
                 return;
@@ -302,6 +326,8 @@ namespace HR
             int managerID = Manager.findManager(emp.GetID());
             Employee manager = FindEmployee(managerID);
             comboManagers.Text = manager.ToString();
+            dataGridView1.Rows.Clear();
+            dataGridView1.Enabled = false;
         }
     }
 }

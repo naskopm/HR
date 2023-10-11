@@ -154,15 +154,15 @@ namespace HR
 			return bonus;
         }
 
-        public override double getYearlySalary()
+		public override double getYearlySalary()
+		{ 
+				return base.getYearlySalary() + bonus;
+		}
+
+		public double getYearlyBudget()
         {
-            return base.getYearlySalary() + bonus + this.getYearlyBudget();
-        }
-	
-        public double getYearlyBudget()
-        {
-			double budget = 0;
-            foreach (var item in team)
+			double budget = this.getYearlySalary();
+            foreach (var item in this.GetTeam())
             {
 				budget += FindEmployee(item).getYearlySalary();
             }
@@ -195,7 +195,7 @@ namespace HR
 					comboManager.Text = selectedManager.ToString();
 				}
 			}
-	        TeamBudget.Text = (this.getYearlyBudget() + this.getYearlySalary()).ToString();
+	        TeamBudget.Text = (this.getYearlyBudget()).ToString();
         }
 		public static int findManager(int id)
         {

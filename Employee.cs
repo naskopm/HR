@@ -15,9 +15,9 @@ namespace HR
         private static double SalaryDecreaseLimit = 0.2;
         private static List<string> titles = new List<string>();
         private static List<string> all_languages = new List<string>();
-        public const string DIR_TO_SAVE = "D:\\Наско\\HR";
+        public const string DIR_TO_SAVE = "D:\\Nasko\\HR";
         public const string FILE_TO_SAVE = "employees.txt";
-        private static int maxID = 1;
+        private static int maxID = 0;
         public static TextBox textBoxID;
         public static TextBox textBoxFirstName;
         public static TextBox textBoxLastName;
