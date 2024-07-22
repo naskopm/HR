@@ -8,6 +8,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
+using Npgsql;
+using System.Security.Cryptography;
 
 namespace HR
 {
@@ -30,14 +32,24 @@ namespace HR
 			bonus = bonusParam;
 			SetTitle(titleParam);
 		}
-		public static void ReadManagerTitles()
+        public Manager(int idParam, string firstNameParam, string lastNameParam, int yobParam,
+            string titleParam) : base(idParam, firstNameParam, lastNameParam, yobParam)
+		{ 
+            SetTitle(titleParam);
+        }
+        public static void ReadManagerTitles()
 		{
-			string fileData = Employee.DIR_TO_SAVE + "\\managerTitles.txt";
-			string[] lines = File.ReadAllLines(fileData);
-			foreach (string line in lines)
+			NpgsqlConnection conn = new NpgsqlConnection(connectionString);
+			conn.Open();
+			string command = "select ti.title from managertitlles \r\njoin titles ti on managertitlles.title_id = ti.title_id";
+            NpgsqlCommand cmd = new NpgsqlCommand(command, conn);
+			NpgsqlDataReader reader = cmd.ExecuteReader(0);
+			while (reader.Read())
 			{
-				ManagerTitles.Add(line.Trim());
-			}
+                ManagerTitles.Add(reader.GetString(0).Trim());
+            }
+			reader.Close();
+			conn.Close();
 		}
 
 		public void AddToTeam(int id)
@@ -77,13 +89,14 @@ namespace HR
 		}
 		public static Manager[] takeManagersToCombo()
         {
+			comboManager.Items.Clear();
 			Manager.ReadManagerTitles();
 			List<Manager> inCombo = new List<Manager>();
             foreach (Employee emp in Employee.GetAllEmployees())
             {
 				if(ManagerTitles.IndexOf(emp.GetTitle()) != -1)
                 {
-					inCombo.Add((Manager)emp);
+					comboManager.Items.Add(emp);
                 }
             }
 			Manager [] toCopy = new Manager[inCombo.Count];
@@ -93,32 +106,106 @@ namespace HR
             }
 			return toCopy;
 		}
-
-		public static Manager CreateFromFile(string line)
-		{
-			string[] data = line.Split(',');
-			for (int i = 0; i < data.Length; i++)
+        public static void loadFromSQL(NpgsqlDataReader reader)
+        {
+			int id = 0;
+			string firstname = "";
+			string lastname = "";
+            int yob = 0;
+            string title = "";
+            double bonus = 0;
+			double salary = 0;
+			string[] subordinants = null;
+			try
 			{
-				data[i] = data[i].Trim();
+				id = reader.GetInt32(0);
+				firstname = reader.GetString(1);
+				lastname = reader.GetString(2);
+				yob = reader.GetInt32(3);
+				title = reader.GetString(5);
+                bonus = reader.IsDBNull(9) ? 0 : reader.GetDouble(9);
+                salary = reader.GetDouble(4);
+				subordinants = reader.GetString(8).Split(',');
 			}
-			Manager man = new Manager(int.Parse(data[0]), data[1].Trim(), data[2].Trim(), int.Parse(data[3]), data[4].Trim(), double.Parse(data[6]));
-			man.SetSalary(int.Parse(data[5]));
-			for (int i = 7; i < data.Length; i++)
+			catch (Exception)
 			{
-				int outter;
-				if (int.TryParse(data[i], out outter))
+			}
+                Manager man = new Manager(id, firstname, lastname, yob, title, bonus);
+                man.SetSalary(salary);
+				if (subordinants != null)
+                foreach (string subordinant in subordinants)
+                {
+                    man.addToTeam(int.Parse(subordinant));
+                }
+                try
+                {
+                    if (reader.GetString(6).Split(',') != null)
+                    {
+                        string[] languagess = reader.GetString(6).Split(',');
+                        foreach (var language in languagess)
+                        {
+                            man.languages.Add(language.Trim());
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+
+
+                }
+            
+			
+      
+	
+
+
+    }
+		public static void saveManager(Employee emp)
+		{
+            NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+            connection.Open();
+			int manID = findManager(emp.GetID());
+			Manager man = FindManager(manID);
+			NpgsqlCommand delete = new NpgsqlCommand(@"delete from manager where manager.idmanager = @id",connection);
+			delete.Parameters.AddWithValue("@id",man.GetID());
+			delete.ExecuteNonQuery();
+            foreach (int id in man.team)
+            {
+                NpgsqlCommand command = new NpgsqlCommand("insert into manager(idmanager,idsubordinate)\r\nvalues(@id,@idsub)", connection);
+
+                command.Parameters.AddWithValue("@id", man.GetID());
+                command.Parameters.AddWithValue("@idsub", id);
+                command.ExecuteNonQuery();
+            }
+			connection.Close();
+        }
+        public override void saveToSQL()
+        {
+			base.saveToSQL();
+            NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+			connection.Open();
+            NpgsqlCommand bonus = new NpgsqlCommand("delete from bonuses where bonuses.emp_id = @id; insert into bonuses(emp_id,bonus)\r\nvalues(@id,@bonus)", connection);
+            bonus.Parameters.AddWithValue("@id", this.GetID());
+            bonus.Parameters.AddWithValue("@bonus", this.GetBonus());
+			bonus.ExecuteNonQuery();
+        }
+		public static Manager FindTheManager(int id)
+		{
+			Manager managerID = null;
+            foreach (Employee employee in employees)
+			{
+				foreach (Manager item in Manager.findAllManagers())
 				{
-					man.addToTeam(outter);
-				}
-				else
-				{
-					if (GetAllLanguages().Contains(data[i].Trim()))
+					foreach (int sub_id in item.team)
 					{
-						man.AddLanguage(data[i].Trim());
+						if (id == sub_id)
+						{
+							managerID = item;
+						}
 					}
 				}
 			}
-			return man;
+			return managerID;
 		}
 		private static Manager FindManager(int id)
 		{
@@ -129,7 +216,25 @@ namespace HR
 			}
 			return null;
 		}
-		public static void delteSubordinant(int id)
+        public override void deleteEmployeeSQL()
+        {
+			Exception exception = new Exception("The manager has subordinates that can't be deleted");
+			if (this.team.Count != 0)
+			{
+				throw exception;
+			}
+			else
+			{
+				NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+				connection.Open();
+				NpgsqlCommand delete = new NpgsqlCommand("delete from bonuses\r\nwhere bonuses.emp_id = @id;", connection);
+				delete.Parameters.AddWithValue("@id", this.GetID());
+				delete.ExecuteNonQuery();
+				connection.Close();
+				base.deleteEmployeeSQL();
+			}
+        }
+        public static void delteSubordinant(int id)
         {
 			int managerID = Manager.findManager(id);
 			if(managerID != -1)

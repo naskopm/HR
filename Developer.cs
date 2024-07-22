@@ -8,6 +8,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
+using Npgsql;
+using System.Runtime.CompilerServices;
 namespace HR
 {
     class Developer: Employee
@@ -20,10 +22,109 @@ namespace HR
 
         public static void Init()
         {
-            string fileData = Employee.DIR_TO_SAVE + "\\skills.txt";
-            string[] lines = File.ReadAllLines(fileData);
-            foreach (string line in lines)
-                all_skills.Add(line.Trim());
+          NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+            connection.Open();
+            NpgsqlCommand command = new NpgsqlCommand("select skill from developerskills", connection);
+            NpgsqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                all_skills.Add(reader.GetString(0));
+            }
+            connection.Close();
+        }
+        public override void deleteEmployeeSQL()
+        {
+            NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+            connection.Open();
+            NpgsqlCommand delete = new NpgsqlCommand("delete from developers\r\nwhere developers.dev_id = @id;\r\ndelete from bonuses\r\nwhere bonuses.emp_id = @id;", connection);
+            delete.Parameters.AddWithValue("@id", this.GetID());
+            delete.ExecuteNonQuery();
+            connection.Close();
+            base.deleteEmployeeSQL();
+        }
+        public static void loadFromSQL(NpgsqlDataReader reader, int id, string firstname, string lastname,int yob, double salary)
+        { 
+            Developer dev = new Developer(id, firstname, lastname, yob, reader.IsDBNull(9) ? 0 : reader.GetDouble(9));
+            string title = reader.GetString(5);
+            try
+            {
+                string[] skills = reader.GetString(7).Split(',');
+                
+                dev.SetSalary(salary);
+                foreach (string skill in skills)
+                {
+                    dev.AddSkill(skill.Trim());
+                }
+
+            }
+            catch (Exception)
+            {
+
+       
+            }
+            
+            try
+            {
+              
+                dev.SetSalary(salary);
+                dev.SetTitle(title);
+                if (reader.GetString(6).Split(',') != null)
+                {
+                    string[] languagess = reader.GetString(6).Split(',');
+                    foreach (var language in languagess)
+                    {
+                        dev.languages.Add(language.Trim());
+                    }
+                }
+            }
+            catch (Exception)
+            {
+
+
+            }
+        }
+        public override void saveToSQL()
+        {
+            base.saveToSQL();
+            NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+            connection.Open();
+            NpgsqlCommand delete = new NpgsqlCommand($@"delete from developers where developers.dev_id = {this.GetID()};", connection);
+            delete.ExecuteNonQuery();
+            foreach (string skill in this.GetSkills())
+            {
+                string langCommand = $@"
+do $$
+declare 
+    skill integer;
+begin
+    with joined as (
+        select ds.id_skill, ds.skill, d.dev_id
+        from developerskills ds
+        left join developers d on d.dev_skill = ds.id_skill
+    ),
+    alsoJoined as (
+        select j.id_skill
+        from joined j
+        where j.skill = '{skill.Replace("'", "''").Trim()}'
+    )
+    select alsoJoined.id_skill
+    into skill
+    from alsoJoined
+    limit 1;
+        insert into developers(dev_id, dev_skill)
+        values({this.GetID()}, skill);
+end $$;;";
+
+                using (var command = new NpgsqlCommand(langCommand, connection))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+            }
+            NpgsqlCommand updateBonus = new NpgsqlCommand("delete from bonuses\r\nwhere bonuses.emp_id = @id;\r\ninsert into bonuses(emp_id,bonus)\r\nvalues(@id,@bonus)", connection);
+            updateBonus.Parameters.AddWithValue("@id", this.GetID());
+            updateBonus.Parameters.AddWithValue("@bonus", this.GetBonus());
+            updateBonus.ExecuteNonQuery();
         }
         public static string[] GetAllSkills()
         {
@@ -73,6 +174,11 @@ namespace HR
         {
             SetTitle("developer");
             bonus = bonusParam;
+        }
+        public Developer(int IdParam, string firstNameParam, string lastNameParam, int yobParam) :
+            base(IdParam, firstNameParam, lastNameParam, yobParam)
+        {
+            SetTitle("developer");
         }
 
         public override string GetPersonalStringToFile()

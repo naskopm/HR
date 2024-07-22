@@ -5,6 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Data;
+using Npgsql;
+using System.Diagnostics.Eventing.Reader;
+using System.Diagnostics;
 
 namespace HR
 {
@@ -15,7 +19,7 @@ namespace HR
         private static double SalaryDecreaseLimit = 0.2;
         private static List<string> titles = new List<string>();
         private static List<string> all_languages = new List<string>();
-        public const string DIR_TO_SAVE = "D:\\Nasko\\HR";
+        public const string DIR_TO_SAVE = "D:\\HR";
         public const string FILE_TO_SAVE = "employees.txt";
         private static int maxID = 0;
         public static TextBox textBoxID;
@@ -28,19 +32,124 @@ namespace HR
         public static CheckedListBox checkedListBox;
         public static DataGridView dataGridView;
         public static DataGridView dataGridView1;
+        public static string connectionString = "Host=localhost;Username=postgres;Password=nasikrasi;Database=HR";
+        public static string bigQuery = "\r\n\tSELECT \r\n    e.emp_id,\r\n    e.FirstName,\r\n    e.LastName,\r\n    e.YearOfBirth,\r\n\te.salary,\r\n\tti.title,\r\n    STRING_AGG(DISTINCT l.language, ', ') AS languages,\r\n    STRING_AGG(DISTINCT devs.skill, ', ') AS skills,\r\n    STRING_AGG(DISTINCT man.idSubordinate::text, ', ') AS subordinates,\r\n    bon.bonus\r\nFROM Employees e\r\nLEFT JOIN languageSpoken ls ON e.emp_id = ls.emp_id\r\nLEFT JOIN languages l ON ls.language_spoken = l.language_id\r\nLEFT JOIN employeeTitles et ON e.emp_id = et.emp_id\r\nLEFT JOIN titles ti ON et.emp_title = ti.title_id\r\nLEFT JOIN developers dev ON e.emp_id = dev.dev_id\r\nLEFT JOIN developerSkills devs ON dev.dev_skill = devs.id_skill\r\nLEFT JOIN manager man ON e.emp_id = man.idManager\r\nLEFT JOIN bonuses bon ON e.emp_id = bon.emp_id\r\nGROUP BY e.emp_id, e.FirstName, e.LastName, e.YearOfBirth, bon.bonus, ti.title;";
         public static void Init()
         {
-            string fileData = Employee.DIR_TO_SAVE + "\\titles.txt";
-            string[] lines = File.ReadAllLines(fileData);
-            foreach (string line in lines)
-                titles.Add(line.Trim());
 
-            fileData = Employee.DIR_TO_SAVE + "\\languages.txt";
-            lines = File.ReadAllLines(fileData);
-            foreach (string line in lines)
-                all_languages.Add(line.Trim());
+            NpgsqlConnection titlesCon = new NpgsqlConnection(connectionString);
+            titlesCon.Open();
+            NpgsqlCommand commandt = new NpgsqlCommand("select ti.title from titles ti", titlesCon);
+            NpgsqlDataReader readert = commandt.ExecuteReader();
+            while (readert.Read())
+            {
+                titles.Add(readert.GetString(0).Trim());
+            }
+            titlesCon.Close();
+
+            NpgsqlConnection languages = new NpgsqlConnection(connectionString);
+            languages.Open();
+            NpgsqlCommand command = new NpgsqlCommand("select languages.language from languages", languages);
+            NpgsqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                all_languages.Add(reader.GetString(0));
+            }
+            languages.Close();
         }
+        public virtual void saveToSQL()
+        {
+            using (NpgsqlConnection connection = new NpgsqlConnection(connectionString))
+            {
+                connection.Open();
+                bool is_new = true;
+                NpgsqlCommand check = new NpgsqlCommand("select e.emp_id from employees e", connection);
+                NpgsqlDataReader reader = check.ExecuteReader();
+                while (reader.Read())
+                {
+                    if (this.ID == reader.GetInt32(0))
+                    {
+                        check.Cancel();
+                        reader.Close();
+                        NpgsqlCommand command1 = new NpgsqlCommand("update employees set emp_id = @id, FirstName = @firstName, LastName = @lastName, YearOfBirth = @yob, salary = @salary where emp_id = @id", connection);
+                        command1.Parameters.AddWithValue("@id", this.GetID());
+                        command1.Parameters.AddWithValue("@firstName", this.GetFirstName());
+                        command1.Parameters.AddWithValue("@lastName", this.GetLastName());
+                        command1.Parameters.AddWithValue("@yob", this.GetYOB());
+                        command1.Parameters.AddWithValue("@salary", this.GetSalary());
+                        command1.ExecuteNonQuery();
+                        Manager.saveManager(this);
+                        is_new = false;
+                        break;
+                    }
+                }
+                if (is_new)
+                {
+                    check.Cancel();
+                    reader.Close();
+                    NpgsqlCommand command = new NpgsqlCommand("insert into employees (emp_id,FirstName, LastName, YearOfBirth, salary) values (@id, @firstName, @lastName, @yob, @salary)", connection);
+                    command.Parameters.AddWithValue("@firstName", this.GetFirstName());
+                    command.Parameters.AddWithValue("@id", this.GetID());
+                    command.Parameters.AddWithValue("@lastName", this.GetLastName());
+                    command.Parameters.AddWithValue("@yob", this.GetYOB());
+                    command.Parameters.AddWithValue("@salary", this.GetSalary());
+                    command.ExecuteNonQuery();
+                }
+                NpgsqlCommand command2 = new NpgsqlCommand("delete from languageSpoken where emp_id = @id", connection);
+                command2.Parameters.AddWithValue("@id", this.GetID());
+                command2.ExecuteNonQuery();
 
+                foreach (string lang in this.GetLanguages())
+                {
+                    string langCommand = $@"
+    do $$
+    declare 
+        lang_id integer;
+    begin
+    with joined as(
+        select l.language_id, l.language, ls.emp_id
+        from languages l
+        left join languagespoken ls on ls.language_spoken = l.language_id 
+    ),
+    alsoJoined as(
+        select j.language_id
+        from joined j
+        where j.language = '{lang.Replace("'", "''")}')
+    select alsoJoined.language_id from alsoJoined limit 1
+    into lang_id;
+    insert into languagespoken(emp_id, language_spoken)
+    values({this.GetID()}, lang_id);
+    end $$;";
+
+                    using (var command = new NpgsqlCommand(langCommand, connection))
+                    {
+                        command.ExecuteNonQuery();
+                    }
+                }
+                string queryTitle = $@"delete from employeetitles et
+where et.emp_id = {this.GetID()};
+do $$
+declare 
+	title integer;
+begin
+with joined as(
+	select t.title_id,t.title,ts.emp_id
+	from titles t
+	left join employeetitles ts on ts.emp_title = t.title_id 
+),
+alsoJoined as(
+select j.title_id
+from joined j
+where j.title = '{this.GetTitle().Replace("'", "''")}')
+select alsoJoined.title_id from alsoJoined  limit 1
+into title;
+insert into employeetitles(emp_id, emp_title)
+values({this.GetID()},title);
+end $$;";
+                NpgsqlCommand chageTitle  = new NpgsqlCommand(queryTitle, connection);
+                chageTitle.ExecuteNonQuery();
+            }
+        }       
         public static void clearLanguages()
         {
             for (int i = 0; i < all_languages.Count; i++)
@@ -55,6 +164,77 @@ namespace HR
             {
                 languages.Add(lang.ToString());
             }
+        }
+        public static void loadFromSQL()
+        {
+            
+            using (NpgsqlConnection connection = new NpgsqlConnection(connectionString))
+            {
+                connection.Open();
+                NpgsqlCommand command = new NpgsqlCommand(bigQuery, connection);
+                NpgsqlDataReader reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+
+                    int id = reader.GetInt32(0);
+                    string firstName = reader.GetString(1);
+                    string lastName = reader.GetString(2);
+                    int yob = reader.GetInt32(3);
+                    string title = reader.IsDBNull(5) ? "Analyst" : reader.GetString(5);
+
+                    double salary = reader.GetDouble(4);
+                    if (title.ToLower().IndexOf("developer") != -1)
+                    {
+                        Developer.loadFromSQL(reader,id,firstName,lastName,yob,salary);
+                        continue;
+                    }
+                    else if (checkWetherManager(title, connection))
+                    {
+                        Manager.loadFromSQL(reader);
+                        continue;
+                    }
+                    
+
+                    Employee emp = new Employee(id, firstName, lastName, yob);
+                    emp.SetSalary(salary);
+                    emp.SetTitle(title);
+                    try
+                    {
+                        if (reader.GetString(6).Split(',') != null)
+                        {
+                            string[] languages = reader.GetString(6).Split(',');
+                            foreach (var language in languages)
+                            {
+                                emp.languages.Add(language.Trim());
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+
+
+                    }       
+                }
+                reader.Close();
+            }
+
+        }
+        static bool checkWetherManager(string title, NpgsqlConnection con)
+        {
+            string query = "select\r\nti.title\r\nfrom titles ti\r\njoin managertitlles mant on mant.title_id = ti.title_id";
+            NpgsqlConnection managerConnect = new NpgsqlConnection(connectionString);
+            managerConnect.Open();
+            NpgsqlCommand command = new NpgsqlCommand(query, managerConnect);
+            NpgsqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                string manTitle = reader.GetString(0);
+                if (manTitle == title)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
         public static string[] GetTitles()
         {
@@ -76,7 +256,7 @@ namespace HR
         private string title;
         private int yob;
         private double salary;
-        private List<string> languages = new List<string>();
+        public List<string> languages = new List<string>();
         public virtual void displayEmployees()
         {
             textBoxID.Text = ID.ToString();
@@ -127,7 +307,8 @@ namespace HR
 
         public static Employee CreateFromFile(string line)
         {
-            string[] data = line.Split(',');
+           
+                string[] data = line.Split(',');
             if (data[4].Trim() == "developer")
                 return Developer.CreateFromFile(line);
             if (Manager.ManagerTitles.IndexOf(data[4].Trim()) != -1)
@@ -341,6 +522,18 @@ namespace HR
         public override string ToString()
         {
             return GetFullName() + ", " + title;
+        }
+        public virtual void deleteEmployeeSQL()
+        {
+            NpgsqlConnection connection = new NpgsqlConnection(connectionString);
+            connection.Open();
+            NpgsqlCommand command = new NpgsqlCommand("delete from languagespoken\r\nwhere languagespoken.emp_id = @id;\r\ndelete from employeetitles\r\nwhere employeetitles.emp_id = @id; delete from manager\r\nwhere idsubordinate = @id;", connection);
+            command.Parameters.AddWithValue("@id", this.GetID());
+            command.ExecuteNonQuery();
+                NpgsqlCommand command1 = new NpgsqlCommand("delete from employees\r\nwhere employees.emp_id = @id", connection);
+                command1.Parameters.AddWithValue("@id", this.GetID());
+                command1.ExecuteNonQuery();
+
         }
 
         public int GetAge()

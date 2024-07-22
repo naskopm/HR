@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
+using System.Security.Cryptography;
 
 namespace HR
 {
@@ -29,6 +30,7 @@ namespace HR
 
         private void btnAdd_Click(object sender, EventArgs e)
         {
+            teamBudget.Text = "";
             textBoxID.Text = "";
             textBoxFirstName.Text = "";
             textBoxLastName.Text = "";
@@ -47,6 +49,7 @@ namespace HR
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
             textBoxFirstName.Focus();
+            dataGridView1.Rows.Clear();
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -69,10 +72,9 @@ namespace HR
             Employee.textBoxFilter = textBoxFilter;
             Manager.TeamBudget = teamBudget;
             string fileData = Employee.DIR_TO_SAVE + "\\employees.txt";
-            string[] lines = File.ReadAllLines(fileData);
-            foreach (string line in lines)
+            Employee.loadFromSQL();
+            foreach (Employee emp in Employee.GetAllEmployees())
             {
-                Employee emp = Employee.CreateFromFile(line);
                 filtered.Add(emp);
             }
             foreach (Employee emp in Employee.GetAllEmployees())
@@ -80,8 +82,8 @@ namespace HR
                 dataGridView.Rows.Add(emp.GetID().ToString(), emp.GetFirstName(), emp.GetLastName(), emp.GetTitle());
 
             }
-/*            comboManagers.Items.Clear();
-            comboManagers.Items.AddRange(Manager.takeManagersToCombo())*/;
+            comboManagers.Items.Clear();
+            comboManagers.Items.AddRange(Manager.takeManagersToCombo());
         }
     
         private void dataGridView_RowEnter(object sender, DataGridViewCellEventArgs e)
@@ -106,13 +108,10 @@ namespace HR
             if (emp != null)
             {
                 emp.displayEmployees();
-                int managerID = Manager.findManager(empId);
-                Employee manager = FindEmployee(managerID);
-                if(manager != null)
-                {
-                    comboManagers.Text = manager.ToString();
-                }
-                
+                int managerID = Manager.findManager(emp.GetID());
+                Manager manager = Manager.FindTheManager(emp.GetID());
+
+
                 if (Manager.ManagerTitles.IndexOf(emp.GetTitle()) != -1)
                 {
                     foreach (Manager managerCheck in Manager.takeManagersToCombo())
@@ -122,8 +121,7 @@ namespace HR
                             comboManagers.Items.Add(managerCheck);
                         }
                     }
-                        
-                    
+
                     dataGridView1.Enabled = true;
                     dataGridView1.Rows.Clear();
                     Manager man = (Manager)emp;
@@ -138,10 +136,17 @@ namespace HR
                 {
                     comboManagers.Items.AddRange(Manager.takeManagersToCombo());
                     dataGridView1.Enabled = false;
+                   
                 }
-            }
- 
 
+                if (manager != null)
+                {
+                    comboManagers.Text = manager.ToString();
+                }
+                else
+                    comboManagers.SelectedIndex = -1;
+
+            }
             textBoxFirstName.Enabled = false;
             textBoxLastName.Enabled = false;
             textBoxYOB.Enabled = false;
@@ -172,11 +177,22 @@ namespace HR
             Boolean bIsNew = false;
             if (emp == null)
             {
-                if (comboBoxTitle.SelectedItem.ToString() == "developer")
-                    emp = new Developer(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), double.Parse(textBoxBonus.Text));
+                if (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1)
+                {
+                    emp = new Developer(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text));
+                    Developer dev = (Developer)emp;
+                    dev.setSkills();
+                    if (textBoxBonus.Text != "")
+                        dev.SetBonus(double.Parse(textBoxBonus.Text));
+                }
                 if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1)
-                    emp = new Manager(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), comboBoxTitle.Text, double.Parse(textBoxBonus.Text));
-                if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) == -1 && comboBoxTitle.SelectedItem.ToString() != "developer")
+                {
+                    emp = new Manager(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), comboBoxTitle.Text);
+                    Manager man = (Manager)emp;
+                    if(textBoxBonus.Text != "")
+                    man.SetBonus(double.Parse(textBoxBonus.Text));
+                }
+                if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) == -1 && comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") == -1)
                     emp = new Employee(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text));
                 bIsNew = true;
             }
@@ -188,6 +204,7 @@ namespace HR
                     filtered.Add(emp);
                 else
                     MessageBox.Show("The new employee " + emp.GetFullName() + " is not displayed in the grid because of the filer.");
+
                 emp.SetSalary(double.Parse(textBoxSalary.Text));
                 emp.SetTitle(comboBoxTitle.Text);
                 emp.ClearLanguages();
@@ -200,8 +217,8 @@ namespace HR
 
             else
             {
-               
-                
+
+
                 for (int i = 0; i < dataGridView.Rows.Count - 1; i++)
                 {
                     if (dataGridView.Rows[i].Selected == true)
@@ -210,6 +227,61 @@ namespace HR
                         emp = FindEmployee(id);
                     }
                 }
+                
+                if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1)
+                {
+                    try
+                    {
+                        emp.deleteEmployeeSQL();
+                        Manager prevent = (Manager)emp;
+                        if (prevent.GetTeam().Count == 0)
+                        {
+
+                            Employee.GetAllEmployees().Remove(emp);
+                            emp = new Manager(emp.GetID(), textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), comboBoxTitle.Text);
+                            Manager man = (Manager)emp;
+                            if (textBoxBonus.Text != "")
+                                man.SetBonus(double.Parse(textBoxBonus.Text));
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        emp.deleteEmployeeSQL();
+                        Employee.GetAllEmployees().Remove(emp);
+                        emp = new Manager(emp.GetID(), textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), comboBoxTitle.Text);
+                        Manager man = (Manager)emp;
+                            if (textBoxBonus.Text != "")
+                                man.SetBonus(double.Parse(textBoxBonus.Text));
+                    }
+                    if (emp.GetTitle().ToLower().IndexOf("developer") != -1)
+                    {
+                        Developer dev = (Developer)emp;
+                        dev.SetBonus(int.Parse(textBoxBonus.Text));
+                        dev.setSkills();
+                        if (textBoxBonus.Text != "")
+                            dev.SetBonus(double.Parse(textBoxBonus.Text));
+                    }
+                    else if (Manager.ManagerTitles.IndexOf(emp.GetTitle()) != -1)
+                    {
+                        Manager man = (Manager)emp;
+                        if (textBoxBonus.Text != "")
+                            man.SetBonus(double.Parse(textBoxBonus.Text));
+                    }
+
+                }
+
+                if (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1)
+                {
+                    emp.deleteEmployeeSQL();
+                    Employee.GetAllEmployees().Remove(emp);
+                    emp = new Developer(emp.GetID(), textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text));
+                    Developer dev = (Developer)emp;
+                    if (textBoxBonus.Text != "")
+                        dev.SetBonus(double.Parse(textBoxBonus.Text));
+                    dev.setSkills();
+                }
+
+
             }
             emp.SetSalary(double.Parse(textBoxSalary.Text));
             emp.SetTitle(comboBoxTitle.Text);
@@ -218,21 +290,32 @@ namespace HR
             Manager.TakeEmpToTeam(emp);
 
            
-            if (emp.GetTitle() == "developer")
-            {
-                Developer dev = (Developer)emp;
-                dev.SetBonus(int.Parse(textBoxBonus.Text));
-                dev.setSkills();
-            }
-            if (Manager.ManagerTitles.IndexOf(emp.GetTitle()) != -1)
-            {
-                Manager man = (Manager)emp;
-                man.SetBonus(int.Parse(textBoxBonus.Text));
-            }
             string saveSelectedManager = comboManagers.Text;
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
-            Employee.SaveToFile();
+            emp.saveToSQL();
+            for (int i = 0; i < checkedListBoxSkills.Items.Count; i++)
+            {
+                checkedListBoxSkills.SetItemChecked(i, false);
+            }
+            double bonusText = 0;
+            bool didExceot = false;
+            try
+            {
+                didExceot = true;
+                bonusText = double.Parse(textBoxBonus.Text);
+            }
+            catch (Exception)
+            {
+                
+            }
+            textBoxBonus.Text = "";
+            if (didExceot)
+                textBoxBonus.Text = bonusText.ToString();
+            if (bonusText == 0)
+            {
+                textBoxBonus.Text = "";
+            }
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
             comboManagers.Text = saveSelectedManager;
@@ -244,9 +327,11 @@ namespace HR
                     comboManagers.Items.Add(managerCheck);
                 }
             }
+            comboManagers.Text = saveSelectedManager;
+            //filtered[filtered.IndexOf(emp)] = emp;
+            emp.saveToSQL();
+            emp.displayEmployees();
         }
-
-
 
         private void btnFilter_Click(object sender, EventArgs e)
         {
@@ -262,6 +347,8 @@ namespace HR
             {
                 dataGridView.Rows.Add(emp.GetID(),emp.GetFirstName(), emp.GetLastName(), emp.GetTitle());
             }
+            dataGridView1.Rows.Clear();
+            teamBudget.Text = "";
         }
 
         private void btnClearFilter_Click(object sender, EventArgs e)
@@ -279,18 +366,18 @@ namespace HR
 
         private void btnDelete_Click(object sender, EventArgs e)
         {
+            int empId = int.Parse(dataGridView.SelectedRows[0].Cells[0].Value.ToString());
+            emp = FindEmployee(empId);
+            emp.deleteEmployeeSQL();
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
-            int empId = int.Parse(dataGridView.SelectedRows[0].Cells[0].Value.ToString());
             Manager.delteSubordinant(empId);
-            emp = FindEmployee(empId);
             Employee.GetAllEmployees().Remove(emp);
             filtered.Remove(emp);
-            Employee.SaveToFile();
             emp = null;
             dataGridView.Rows.RemoveAt(this.dataGridView.SelectedRows[0].Index);
             dataGridView.Rows[0].Selected = true;
-            Employee.SaveToFile();
+
         }
 
         private void comboBoxTitle_SelectedValueChanged(object sender, EventArgs e)
@@ -302,8 +389,8 @@ namespace HR
             }
             else
             {
-                textBoxBonus.Enabled = (comboBoxTitle.SelectedItem.ToString() == "developer" || Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1);
-                checkedListBoxSkills.Enabled = (comboBoxTitle.SelectedItem.ToString() == "developer");
+                textBoxBonus.Enabled = (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1 || Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1);
+                checkedListBoxSkills.Enabled = (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1);
             }
 
             if (!textBoxBonus.Enabled)
@@ -329,6 +416,7 @@ namespace HR
             dataGridView1.Rows.Clear();
             dataGridView1.Enabled = false;
         }
+
     }
 }
 
