@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
 using System.Security.Cryptography;
+using Npgsql;
+using System.Net.Http.Headers;
 
 namespace HR
 {
@@ -26,6 +28,7 @@ namespace HR
             checkedListBoxLanguages.Items.AddRange(Employee.GetAllLanguages());
             checkedListBoxSkills.Items.AddRange(Developer.GetAllSkills());
             Manager.ReadManagerTitles();
+            Developer.loadDevTitles();
         }
 
         private void btnAdd_Click(object sender, EventArgs e)
@@ -71,7 +74,6 @@ namespace HR
             Employee.dataGridView = dataGridView;
             Employee.textBoxFilter = textBoxFilter;
             Manager.TeamBudget = teamBudget;
-            string fileData = Employee.DIR_TO_SAVE + "\\employees.txt";
             Employee.loadFromSQL();
             foreach (Employee emp in Employee.GetAllEmployees())
             {
@@ -84,6 +86,9 @@ namespace HR
             }
             comboManagers.Items.Clear();
             comboManagers.Items.AddRange(Manager.takeManagersToCombo());
+            int emp_id = int.Parse(dataGridView.Rows[0].Cells[0].Value.ToString());
+            comboManagers.Items.Remove(FindEmployee(emp_id));
+            comboManagers.SelectedItem =Manager.FindTheManager(FindEmployee(emp_id).GetID());
         }
     
         private void dataGridView_RowEnter(object sender, DataGridViewCellEventArgs e)
@@ -112,16 +117,17 @@ namespace HR
                 Manager manager = Manager.FindTheManager(emp.GetID());
 
 
-                if (Manager.ManagerTitles.IndexOf(emp.GetTitle()) != -1)
+                if (Manager.ManagerTitles.IndexOf(emp.GetTitle().ToString()) != -1)
                 {
-                    foreach (Manager managerCheck in Manager.takeManagersToCombo())
-                    {
-                        if (emp.GetID() != managerCheck.GetID())
+                    /*    foreach (Manager managerCheck in Manager.takeManagersToCombo())
                         {
-                            comboManagers.Items.Add(managerCheck);
-                        }
-                    }
-
+                            if (emp.GetID() != managerCheck.GetID())
+                            {
+                                comboManagers.Items.Add(managerCheck);
+                            }
+                        }*/
+                    Manager.takeManagersToCombo();
+                    comboManagers.Items.Remove(emp);
                     dataGridView1.Enabled = true;
                     dataGridView1.Rows.Clear();
                     Manager man = (Manager)emp;
@@ -177,7 +183,7 @@ namespace HR
             Boolean bIsNew = false;
             if (emp == null)
             {
-                if (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1)
+                if (Developer.GetDevTitles().IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1)
                 {
                     emp = new Developer(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text));
                     Developer dev = (Developer)emp;
@@ -192,7 +198,7 @@ namespace HR
                     if(textBoxBonus.Text != "")
                     man.SetBonus(double.Parse(textBoxBonus.Text));
                 }
-                if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) == -1 && comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") == -1)
+                if (Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) == -1 && Developer.GetDevTitles().IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) == -1)
                     emp = new Employee(-1, textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text));
                 bIsNew = true;
             }
@@ -203,7 +209,7 @@ namespace HR
                 if (emp.IsMatch(textBoxFilter.Text))
                     filtered.Add(emp);
                 else
-                    MessageBox.Show("The new employee " + emp.GetFullName() + " is not displayed in the grid because of the filer.");
+                    MessageBox.Show("The new employee " + emp.GetFullName() + " is not displayed in the grid because of the filter.");
 
                 emp.SetSalary(double.Parse(textBoxSalary.Text));
                 emp.SetTitle(comboBoxTitle.Text);
@@ -232,11 +238,11 @@ namespace HR
                 {
                     try
                     {
-                        emp.deleteEmployeeSQL();
+ 
                         Manager prevent = (Manager)emp;
                         if (prevent.GetTeam().Count == 0)
                         {
-
+                            emp.deleteEmployeeSQL();
                             Employee.GetAllEmployees().Remove(emp);
                             emp = new Manager(emp.GetID(), textBoxFirstName.Text, textBoxLastName.Text, int.Parse(textBoxYOB.Text), comboBoxTitle.Text);
                             Manager man = (Manager)emp;
@@ -253,7 +259,7 @@ namespace HR
                             if (textBoxBonus.Text != "")
                                 man.SetBonus(double.Parse(textBoxBonus.Text));
                     }
-                    if (emp.GetTitle().ToLower().IndexOf("developer") != -1)
+                    if (Developer.GetDevTitles().IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1)
                     {
                         Developer dev = (Developer)emp;
                         dev.SetBonus(int.Parse(textBoxBonus.Text));
@@ -270,7 +276,7 @@ namespace HR
 
                 }
 
-                if (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1)
+                if (Developer.GetDevTitles().IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1)
                 {
                     emp.deleteEmployeeSQL();
                     Employee.GetAllEmployees().Remove(emp);
@@ -329,7 +335,12 @@ namespace HR
             }
             comboManagers.Text = saveSelectedManager;
             //filtered[filtered.IndexOf(emp)] = emp;
+            NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+            connection.Open();
+            NpgsqlTransaction transaction = connection.BeginTransaction();
             emp.saveToSQL();
+            transaction.Commit();
+            connection.Close();
             emp.displayEmployees();
         }
 
@@ -389,8 +400,8 @@ namespace HR
             }
             else
             {
-                textBoxBonus.Enabled = (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1 || Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1);
-                checkedListBoxSkills.Enabled = (comboBoxTitle.SelectedItem.ToString().ToLower().IndexOf("developer") != -1);
+                textBoxBonus.Enabled = (Developer.GetDevTitles().IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1 || Manager.ManagerTitles.IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1);
+                checkedListBoxSkills.Enabled = (Developer.GetDevTitles().IndexOf(comboBoxTitle.SelectedItem.ToString().Trim()) != -1);
             }
 
             if (!textBoxBonus.Enabled)
@@ -400,7 +411,7 @@ namespace HR
         private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
         {
 
-
+            teamBudget.Text = "";
             if (dataGridView1.Rows.Count == 0)
             {
                 return;

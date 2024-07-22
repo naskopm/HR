@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using System.IO;
 using Npgsql;
 using System.Security.Cryptography;
+using System.ComponentModel.Design;
 
 namespace HR
 {
@@ -161,7 +162,7 @@ namespace HR
 
     }
 		public static void saveManager(Employee emp)
-		{
+		{ 
             NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
             connection.Open();
 			int manID = findManager(emp.GetID());
@@ -181,13 +182,25 @@ namespace HR
         }
         public override void saveToSQL()
         {
-			base.saveToSQL();
-            NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
-			connection.Open();
-            NpgsqlCommand bonus = new NpgsqlCommand("delete from bonuses where bonuses.emp_id = @id; insert into bonuses(emp_id,bonus)\r\nvalues(@id,@bonus)", connection);
-            bonus.Parameters.AddWithValue("@id", this.GetID());
-            bonus.Parameters.AddWithValue("@bonus", this.GetBonus());
-			bonus.ExecuteNonQuery();
+            NpgsqlTransaction transaction = null;
+			try { 
+			
+                NpgsqlConnection connection = new NpgsqlConnection(Employee.connectionString);
+                connection.Open();
+                transaction = connection.BeginTransaction();
+            base.saveToSQL();
+
+                NpgsqlCommand bonus = new NpgsqlCommand("delete from bonuses where bonuses.emp_id = @id; insert into bonuses(emp_id,bonus)\r\nvalues(@id,@bonus)", connection);
+                bonus.Parameters.AddWithValue("@id", this.GetID());
+                bonus.Parameters.AddWithValue("@bonus", this.GetBonus());
+                bonus.ExecuteNonQuery();
+				transaction.Commit();
+            }
+			catch (Exception)
+			{
+				transaction.Rollback();
+			}
+			
         }
 		public static Manager FindTheManager(int id)
 		{
@@ -244,16 +257,6 @@ namespace HR
 			}
 			
         }
-
-		public override string GetPersonalStringToFile()
-		{
-			string crewMembers = "";
-			foreach (var item in team)
-			{
-				crewMembers += item + ", ";
-			}
-			return base.GetPersonalStringToFile() + ", " + bonus.ToString() + ", " + crewMembers;
-		}
 		public double GetBonus()
 		{
 			return bonus;
@@ -348,6 +351,3 @@ namespace HR
 		}
 	}
 }
-
-
-//da go napravvq po analogiq s Developer

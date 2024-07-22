@@ -9,6 +9,7 @@ using System.Data;
 using Npgsql;
 using System.Diagnostics.Eventing.Reader;
 using System.Diagnostics;
+using Npgsql.Replication.PgOutput.Messages;
 
 namespace HR
 {
@@ -19,8 +20,6 @@ namespace HR
         private static double SalaryDecreaseLimit = 0.2;
         private static List<string> titles = new List<string>();
         private static List<string> all_languages = new List<string>();
-        public const string DIR_TO_SAVE = "D:\\HR";
-        public const string FILE_TO_SAVE = "employees.txt";
         private static int maxID = 0;
         public static TextBox textBoxID;
         public static TextBox textBoxFirstName;
@@ -61,47 +60,57 @@ namespace HR
         {
             using (NpgsqlConnection connection = new NpgsqlConnection(connectionString))
             {
-                connection.Open();
-                bool is_new = true;
-                NpgsqlCommand check = new NpgsqlCommand("select e.emp_id from employees e", connection);
-                NpgsqlDataReader reader = check.ExecuteReader();
-                while (reader.Read())
+                NpgsqlTransaction transaction = null;
+                
+                    
+                    // NpgsqlTransaction transaction = connection.BeginTransaction();
+                    try 
                 {
-                    if (this.ID == reader.GetInt32(0))
+                    connection.Open();
+                    if (Manager.ManagerTitles.IndexOf(this.GetTitle().Trim()) == -1 && Developer.GetDevTitles().IndexOf(this.GetTitle().Trim()) == -1)
+                    {
+                        transaction = connection.BeginTransaction();
+                    }
+                    bool is_new = true;
+                    NpgsqlCommand check = new NpgsqlCommand("select e.emp_id from employees e", connection);
+                    NpgsqlDataReader reader = check.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        if (this.ID == reader.GetInt32(0))
+                        {
+                            check.Cancel();
+                            reader.Close();
+                            NpgsqlCommand command1 = new NpgsqlCommand("update employees set emp_id = @id, FirstName = @firstName, LastName = @lastName, YearOfBirth = @yob, salary = @salary where emp_id = @id", connection);
+                            command1.Parameters.AddWithValue("@id", this.GetID());
+                            command1.Parameters.AddWithValue("@firstName", this.GetFirstName());
+                            command1.Parameters.AddWithValue("@lastName", this.GetLastName());
+                            command1.Parameters.AddWithValue("@yob", this.GetYOB());
+                            command1.Parameters.AddWithValue("@salary", this.GetSalary());
+                            command1.ExecuteNonQuery();
+                            Manager.saveManager(this);
+                            is_new = false;
+                            break;
+                        }
+                    }
+                    if (is_new)
                     {
                         check.Cancel();
                         reader.Close();
-                        NpgsqlCommand command1 = new NpgsqlCommand("update employees set emp_id = @id, FirstName = @firstName, LastName = @lastName, YearOfBirth = @yob, salary = @salary where emp_id = @id", connection);
-                        command1.Parameters.AddWithValue("@id", this.GetID());
-                        command1.Parameters.AddWithValue("@firstName", this.GetFirstName());
-                        command1.Parameters.AddWithValue("@lastName", this.GetLastName());
-                        command1.Parameters.AddWithValue("@yob", this.GetYOB());
-                        command1.Parameters.AddWithValue("@salary", this.GetSalary());
-                        command1.ExecuteNonQuery();
-                        Manager.saveManager(this);
-                        is_new = false;
-                        break;
+                        NpgsqlCommand command = new NpgsqlCommand("insert into employees (emp_id,FirstName, LastName, YearOfBirth, salary) values (@id, @firstName, @lastName, @yob, @salary)", connection);
+                        command.Parameters.AddWithValue("@firstName", this.GetFirstName());
+                        command.Parameters.AddWithValue("@id", this.GetID());
+                        command.Parameters.AddWithValue("@lastName", this.GetLastName());
+                        command.Parameters.AddWithValue("@yob", this.GetYOB());
+                        command.Parameters.AddWithValue("@salary", this.GetSalary());
+                        command.ExecuteNonQuery();
                     }
-                }
-                if (is_new)
-                {
-                    check.Cancel();
-                    reader.Close();
-                    NpgsqlCommand command = new NpgsqlCommand("insert into employees (emp_id,FirstName, LastName, YearOfBirth, salary) values (@id, @firstName, @lastName, @yob, @salary)", connection);
-                    command.Parameters.AddWithValue("@firstName", this.GetFirstName());
-                    command.Parameters.AddWithValue("@id", this.GetID());
-                    command.Parameters.AddWithValue("@lastName", this.GetLastName());
-                    command.Parameters.AddWithValue("@yob", this.GetYOB());
-                    command.Parameters.AddWithValue("@salary", this.GetSalary());
-                    command.ExecuteNonQuery();
-                }
-                NpgsqlCommand command2 = new NpgsqlCommand("delete from languageSpoken where emp_id = @id", connection);
-                command2.Parameters.AddWithValue("@id", this.GetID());
-                command2.ExecuteNonQuery();
+                    NpgsqlCommand command2 = new NpgsqlCommand("delete from languageSpoken where emp_id = @id", connection);
+                    command2.Parameters.AddWithValue("@id", this.GetID());
+                    command2.ExecuteNonQuery();
 
-                foreach (string lang in this.GetLanguages())
-                {
-                    string langCommand = $@"
+                    foreach (string lang in this.GetLanguages())
+                    {
+                        string langCommand = $@"
     do $$
     declare 
         lang_id integer;
@@ -121,12 +130,12 @@ namespace HR
     values({this.GetID()}, lang_id);
     end $$;";
 
-                    using (var command = new NpgsqlCommand(langCommand, connection))
-                    {
-                        command.ExecuteNonQuery();
+                        using (var command = new NpgsqlCommand(langCommand, connection))
+                        {
+                            command.ExecuteNonQuery();
+                        }
                     }
-                }
-                string queryTitle = $@"delete from employeetitles et
+                    string queryTitle = $@"delete from employeetitles et
 where et.emp_id = {this.GetID()};
 do $$
 declare 
@@ -146,8 +155,21 @@ into title;
 insert into employeetitles(emp_id, emp_title)
 values({this.GetID()},title);
 end $$;";
-                NpgsqlCommand chageTitle  = new NpgsqlCommand(queryTitle, connection);
-                chageTitle.ExecuteNonQuery();
+                    NpgsqlCommand chageTitle = new NpgsqlCommand(queryTitle, connection);
+                    chageTitle.ExecuteNonQuery();
+                    // transaction.Commit();
+                    if (Manager.ManagerTitles.IndexOf(this.GetTitle().Trim()) == -1 && Developer.GetDevTitles().IndexOf(this.GetTitle().Trim()) == -1)
+                    {
+                        transaction.Commit();
+                    }
+                }
+                catch (Exception)
+                {
+                    if (Manager.ManagerTitles.IndexOf(this.GetTitle().Trim()) == -1 && Developer.GetDevTitles().IndexOf(this.GetTitle().Trim()) == -1)
+                    {
+                        transaction.Rollback();
+                    }
+                }
             }
         }       
         public static void clearLanguages()
@@ -183,7 +205,7 @@ end $$;";
                     string title = reader.IsDBNull(5) ? "Analyst" : reader.GetString(5);
 
                     double salary = reader.GetDouble(4);
-                    if (title.ToLower().IndexOf("developer") != -1)
+                    if (Developer.GetDevTitles().IndexOf(title.Trim().Trim()) != -1)
                     {
                         Developer.loadFromSQL(reader,id,firstName,lastName,yob,salary);
                         continue;
@@ -305,40 +327,9 @@ end $$;";
             return toAdd;
         }
 
-        public static Employee CreateFromFile(string line)
-        {
-           
-                string[] data = line.Split(',');
-            if (data[4].Trim() == "developer")
-                return Developer.CreateFromFile(line);
-            if (Manager.ManagerTitles.IndexOf(data[4].Trim()) != -1)
-                return Manager.CreateFromFile(line);
-            Employee emp = new Employee(int.Parse(data[0]), data[1].Trim(), data[2].Trim(), int.Parse(data[3]),
-                data[4].Trim(), double.Parse(data[5]));
-            for (int i = 6; i < data.Length; i++)
-            {
-                emp.AddLanguage(data[i].Trim());
-            }
-
-            return emp;
-        }
-        public static void SaveToFile()
-        {
-            string fileToSave = Employee.DIR_TO_SAVE + "\\" + FILE_TO_SAVE;
-            StreamWriter sw = File.CreateText(fileToSave);
-            foreach (Employee em in employees)
-            {
-                sw.WriteLine(em.GetStringToFile());
-            }
-            sw.Close();
-        }
         public static List<Employee> GetAll()
         {
             return new List<Employee>(employees);
-        }
-        public static void Load(string line)
-        {
-            Employee emp = Employee.CreateFromFile(line);
         }
         public static void Remove(Employee toDelete)
         {
@@ -470,19 +461,6 @@ end $$;";
         public string GetFullName()
         {
             return firstName + " " + lastName;
-        }
-
-        public virtual string GetPersonalStringToFile()
-        {
-            return ID.ToString() + ", " + firstName + ", " + lastName + ", " + yob.ToString() + ", "
-                            + title + ", " + salary.ToString();
-        }
-        public virtual string GetStringToFile()
-        {
-            string result = GetPersonalStringToFile();
-            foreach (string lang in languages)
-                result += ", " + lang;
-            return result;
         }
 
         public string GetTitle()
