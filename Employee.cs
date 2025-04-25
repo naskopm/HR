@@ -31,7 +31,7 @@ namespace HR
         public static CheckedListBox checkedListBox;
         public static DataGridView dataGridView;
         public static DataGridView dataGridView1;
-        public static string connectionString = "Host=localhost;Username=postgres;Password=nasikrasi;Database=HR";
+        public static string connectionString = "Host=localhost;Username=yourUsername;Password=yourPassword;Database=HR";
         public static string bigQuery = "\r\n\tSELECT \r\n    e.emp_id,\r\n    e.FirstName,\r\n    e.LastName,\r\n    e.YearOfBirth,\r\n\te.salary,\r\n\tti.title,\r\n    STRING_AGG(DISTINCT l.language, ', ') AS languages,\r\n    STRING_AGG(DISTINCT devs.skill, ', ') AS skills,\r\n    STRING_AGG(DISTINCT man.idSubordinate::text, ', ') AS subordinates,\r\n    bon.bonus\r\nFROM Employees e\r\nLEFT JOIN languageSpoken ls ON e.emp_id = ls.emp_id\r\nLEFT JOIN languages l ON ls.language_spoken = l.language_id\r\nLEFT JOIN employeeTitles et ON e.emp_id = et.emp_id\r\nLEFT JOIN titles ti ON et.emp_title = ti.title_id\r\nLEFT JOIN developers dev ON e.emp_id = dev.dev_id\r\nLEFT JOIN developerSkills devs ON dev.dev_skill = devs.id_skill\r\nLEFT JOIN manager man ON e.emp_id = man.idManager\r\nLEFT JOIN bonuses bon ON e.emp_id = bon.emp_id\r\nGROUP BY e.emp_id, e.FirstName, e.LastName, e.YearOfBirth, bon.bonus, ti.title;";
         public static void Init()
         {
